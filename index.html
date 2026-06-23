@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>作業タイマー</title>
+<style>
+  :root {
+    --bg: #1a1d21;
+    --card: #25282d;
+    --card-inner: #2c2f35;
+    --border: #3a3e45;
+    --text: #e8eaed;
+    --text-dim: #9aa0a6;
+    --accent: #4a9eff;
+    --accent-soft: #2d3b50;
+    --danger: #ff6b6b;
+    --running: #3ddc84;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .app { width: 100%; max-width: 460px; }
+
+  .page-title {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+    letter-spacing: 0.02em;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+  }
+
+  /* ---- 合計ヘッダ ---- */
+  .summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding-bottom: 18px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .summary-label { font-size: 14px; color: var(--text); font-weight: 600; }
+  .summary-date { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+  .summary-right { text-align: right; }
+  .summary-total { font-size: 30px; font-weight: 700; line-height: 1; }
+  .summary-total .unit { font-size: 14px; font-weight: 500; color: var(--text-dim); margin-left: 3px; }
+  .summary-ratio { margin-top: 6px; font-size: 13px; }
+  .summary-ratio #ratio {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .ratio-target { color: var(--text-dim); cursor: pointer; margin-left: 2px; }
+  .ratio-target:hover { color: var(--text); text-decoration: underline; }
+
+  /* ---- 項目リスト ---- */
+  .list { display: flex; flex-direction: column; }
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .item:last-child { border-bottom: none; }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    flex-shrink: 0;
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  .item.running .dot {
+    background: var(--running);
+    box-shadow: 0 0 8px var(--running);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.45;} }
+
+  .item-name {
+    flex: 1;
+    font-size: 15px;
+    color: var(--text);
+    background: transparent;
+    border: none;
+    outline: none;
+    border-radius: 6px;
+    padding: 4px 6px;
+    min-width: 0;
+  }
+  .item-name:focus { background: var(--card-inner); }
+
+  .item-time {
+    font-variant-numeric: tabular-nums;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .item-time .unit { font-size: 11px; font-weight: 500; color: var(--text-dim); margin-left: 2px; }
+  .item.running .item-time { color: var(--running); }
+
+  .item-ratio {
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    white-space: nowrap;
+    width: 34px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .btn-start {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--card-inner);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    width: 58px;
+    text-align: center;
+  }
+  .btn-start:hover { border-color: var(--accent); color: var(--accent); }
+  .item.running .btn-start {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    line-height: 0;
+    display: flex;
+    align-items: center;
+    transition: color 0.15s, background 0.15s;
+    flex-shrink: 0;
+  }
+  .icon-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+  .icon-btn.del:hover { color: var(--danger); }
+  .icon-btn svg { width: 15px; height: 15px; }
+
+  /* ---- 追加 ---- */
+  .add-row {
+    margin-top: 6px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .btn-add {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 14px;
+    padding: 8px;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: color 0.15s, background 0.15s;
+  }
+  .btn-add:hover { color: var(--accent); background: rgba(74,158,255,0.08); }
+
+  .footer {
+    margin-top: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .footer button {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 11px;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+  }
+  .footer button:hover { color: var(--text); }
+
+  .empty {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    padding: 20px 0;
+  }
+
+  /* ---- 切り離し（PiP）窓の中での見た目 ---- */
+  body.pip {
+    display: block;
+    padding: 8px;
+    background: var(--bg);
+  }
+  body.pip .app { max-width: none; }
+  body.pip .page-title { display: none; }
+  body.pip .card {
+    border: none;
+    box-shadow: none;
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  body.pip #detachBtn { display: none; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="page-title">作業タイマー</div>
+    <div class="card">
+      <div class="summary">
+        <div>
+          <div class="summary-label">今日の合計</div>
+          <div class="summary-date" id="date"></div>
+        </div>
+        <div class="summary-right">
+          <div class="summary-total"><span id="total">0:00</span></div>
+          <div class="summary-ratio">
+            <span id="ratio">0.00</span>
+            <span class="ratio-target" id="target" title="クリックで目標分数を変更">/ 480分</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="list" id="list"></div>
+
+      <div class="add-row">
+        <button class="btn-add" id="addBtn">＋ 項目を追加</button>
+      </div>
+    </div>
+
+    <div class="footer">
+      <button id="detachBtn">⧉ 最前面に切り離す</button>
+      <button id="copyBtn">合計をコピー</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  const STORAGE_KEY = "work-timer-v1";
+  const WEEKDAYS = ["日","月","火","水","木","金","土"];
+
+  // ---- 状態 ----
+  // item: { id, name, seconds, runningSince(ms|null) }
+  let state = load();
+
+  function todayKey() {
+    const d = new Date();
+    return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  }
+
+  function defaultState() {
+    return {
+      date: todayKey(),
+      target: 480,
+      items: [
+        { id: uid(), name: "A社 保守", seconds: 0, runningSince: null },
+        { id: uid(), name: "B社 開発", seconds: 0, runningSince: null },
+        { id: uid(), name: "問い合わせ対応", seconds: 0, runningSince: null },
+      ],
+    };
+  }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultState();
+      const s = JSON.parse(raw);
+      if (!s.items) return defaultState();
+      if (!s.target || s.target <= 0) s.target = 480;
+      // 日付が変わっていたら時間だけリセット（項目名は維持）
+      if (s.date !== todayKey()) {
+        s.date = todayKey();
+        s.items.forEach((it) => { it.seconds = 0; it.runningSince = null; });
+      }
+      return s;
+    } catch (e) {
+      return defaultState();
+    }
+  }
+
+  function save() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  // 経過秒（実行中なら現在時刻まで加算）
+  function elapsed(it) {
+    let s = it.seconds;
+    if (it.runningSince) s += (Date.now() - it.runningSince) / 1000;
+    return s;
+  }
+
+  function toMinutes(sec) {
+    return Math.floor(sec / 60);
+  }
+
+  // 秒数を「分:秒」表記に（例: 650秒 → "10:50"）。1時間超は分が60以上になる
+  function formatTime(sec) {
+    const s = Math.floor(sec);
+    const m = Math.floor(s / 60);
+    const ss = String(s % 60).padStart(2, "0");
+    return `${m}:${ss}`;
+  }
+
+  // ---- 操作 ----
+  function toggle(id) {
+    const it = state.items.find((x) => x.id === id);
+    if (!it) return;
+    if (it.runningSince) {
+      // 停止
+      it.seconds += (Date.now() - it.runningSince) / 1000;
+      it.runningSince = null;
+    } else {
+      // 開始（他は止めず複数同時計測OK）
+      it.runningSince = Date.now();
+    }
+    save();
+    render();
+  }
+
+  function resetItem(id) {
+    const it = state.items.find((x) => x.id === id);
+    if (!it) return;
+    it.seconds = 0;
+    it.runningSince = null;
+    save();
+    render();
+  }
+
+  function deleteItem(id) {
+    state.items = state.items.filter((x) => x.id !== id);
+    save();
+    render();
+  }
+
+  function addItem() {
+    state.items.push({ id: uid(), name: "新しい項目", seconds: 0, runningSince: null });
+    save();
+    render();
+    // 追加した項目名を編集状態に
+    const inputs = listEl.querySelectorAll(".item-name");
+    const last = inputs[inputs.length - 1];
+    if (last) { last.focus(); last.select(); }
+  }
+
+  function rename(id, name) {
+    const it = state.items.find((x) => x.id === id);
+    if (it) { it.name = name; save(); }
+  }
+
+  function resetAll() {
+    if (!confirm("すべての時間を0分にリセットしますか？")) return;
+    state.items.forEach((it) => { it.seconds = 0; it.runningSince = null; });
+    save();
+    render();
+  }
+
+  function copySummary() {
+    const lines = state.items
+      .map((it) => `${it.name}: ${toMinutes(elapsed(it))}分`);
+    const total = state.items.reduce((a, it) => a + elapsed(it), 0);
+    lines.push(`合計: ${toMinutes(total)}分`);
+    const text = lines.join("\n");
+    navigator.clipboard.writeText(text).then(() => {
+      copyBtn.textContent = "コピーしました！";
+      setTimeout(() => { copyBtn.textContent = "合計をコピー"; }, 1800);
+    });
+  }
+
+  // ---- 切り離し（常に最前面の小窓 / Document Picture-in-Picture）----
+  let pipWindow = null;
+
+  async function detach() {
+    if (!("documentPictureInPicture" in window)) {
+      alert("「切り離し」はこのブラウザでは使えません。\nMicrosoft Edge または Google Chrome（最新版）でこのファイルを開いてください。");
+      return;
+    }
+    if (pipWindow) { pipWindow.focus(); return; }
+    try {
+      pipWindow = await documentPictureInPicture.requestWindow({ width: 360, height: 420 });
+    } catch (e) {
+      alert("切り離しに失敗しました: " + e.message);
+      pipWindow = null;
+      return;
+    }
+    // スタイルを小窓へコピー
+    document.querySelectorAll('style, link[rel="stylesheet"]').forEach((node) => {
+      pipWindow.document.head.appendChild(node.cloneNode(true));
+    });
+    pipWindow.document.body.classList.add("pip");
+    pipWindow.document.title = "作業タイマー";
+    // アプリ本体を小窓へ移動（イベントや状態はそのまま維持される）
+    const app = document.querySelector(".app");
+    pipWindow.document.body.append(app);
+    // 小窓を閉じたら元のページへ戻す
+    pipWindow.addEventListener("pagehide", () => {
+      document.body.append(app);
+      pipWindow = null;
+    });
+  }
+
+  // ---- 描画 ----
+  const listEl = document.getElementById("list");
+  const totalEl = document.getElementById("total");
+  const dateEl = document.getElementById("date");
+  const ratioEl = document.getElementById("ratio");
+  const targetEl = document.getElementById("target");
+
+  function editTarget() {
+    const input = prompt("1日の目標分数を入力してください（例: 480）", state.target);
+    if (input === null) return;
+    const n = parseInt(input, 10);
+    if (isNaN(n) || n <= 0) { alert("正の数を入力してください。"); return; }
+    state.target = n;
+    save();
+    render();
+  }
+
+  const ICON_RESET = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
+  const ICON_DEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+
+  function render() {
+    // 日付
+    const d = new Date();
+    dateEl.textContent = `${d.getMonth() + 1}月${d.getDate()}日(${WEEKDAYS[d.getDay()]})`;
+
+    // リスト
+    listEl.innerHTML = "";
+    if (state.items.length === 0) {
+      const e = document.createElement("div");
+      e.className = "empty";
+      e.textContent = "項目がありません。下のボタンから追加してください。";
+      listEl.appendChild(e);
+    }
+
+    state.items.forEach((it) => {
+      const running = !!it.runningSince;
+      const row = document.createElement("div");
+      row.className = "item" + (running ? " running" : "");
+
+      const dot = document.createElement("span");
+      dot.className = "dot";
+
+      const name = document.createElement("input");
+      name.className = "item-name";
+      name.value = it.name;
+      name.spellcheck = false;
+      name.addEventListener("input", () => rename(it.id, name.value));
+
+      const time = document.createElement("span");
+      time.className = "item-time";
+      time.textContent = formatTime(elapsed(it));
+
+      const ratio = document.createElement("span");
+      ratio.className = "item-ratio";
+      ratio.textContent = (toMinutes(elapsed(it)) / state.target).toFixed(2);
+
+      const start = document.createElement("button");
+      start.className = "btn-start";
+      start.textContent = running ? "停止" : "開始";
+      start.addEventListener("click", () => toggle(it.id));
+
+      const reset = document.createElement("button");
+      reset.className = "icon-btn";
+      reset.title = "リセット";
+      reset.innerHTML = ICON_RESET;
+      reset.addEventListener("click", () => resetItem(it.id));
+
+      const del = document.createElement("button");
+      del.className = "icon-btn del";
+      del.title = "削除";
+      del.innerHTML = ICON_DEL;
+      del.addEventListener("click", () => deleteItem(it.id));
+
+      row.append(dot, name, time, ratio, start, reset, del);
+      listEl.appendChild(row);
+    });
+
+    updateTotals();
+  }
+
+  // 合計と実行中の表示だけ毎秒更新（入力欄の再生成は避ける）
+  function updateTotals() {
+    let total = 0;
+    state.items.forEach((it, i) => {
+      const sec = elapsed(it);
+      total += sec;
+      if (it.runningSince) {
+        const row = listEl.children[i];
+        if (row) {
+          const t = row.querySelector(".item-time");
+          if (t) t.textContent = formatTime(sec);
+          const r = row.querySelector(".item-ratio");
+          if (r) r.textContent = (toMinutes(sec) / state.target).toFixed(2);
+        }
+      }
+    });
+    totalEl.textContent = formatTime(total);
+    ratioEl.textContent = (toMinutes(total) / state.target).toFixed(2);
+    targetEl.textContent = `/ ${state.target}分`;
+  }
+
+  const copyBtn = document.getElementById("copyBtn");
+  document.getElementById("addBtn").addEventListener("click", addItem);
+  copyBtn.addEventListener("click", copySummary);
+  document.getElementById("detachBtn").addEventListener("click", detach);
+  targetEl.addEventListener("click", editTarget);
+
+  // 日付跨ぎ＆実行中タイマーの更新
+  setInterval(() => {
+    if (state.date !== todayKey()) {
+      state = load();
+      render();
+      return;
+    }
+    updateTotals();
+  }, 1000);
+
+  // タブを閉じる前に保存（実行中の経過も確定）
+  window.addEventListener("beforeunload", save);
+
+  render();
+})();
+</script>
+</body>
+</html>
