@@ -112,7 +112,11 @@
     font-weight: 600;
     color: var(--text);
     white-space: nowrap;
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 2px 4px;
   }
+  .item-time:hover { background: var(--card-inner); }
   .item-time .unit { font-size: 11px; font-weight: 500; color: var(--text-dim); margin-left: 2px; }
   .item.running .item-time { color: var(--running); }
 
@@ -347,6 +351,37 @@
     render();
   }
 
+  // 時間を手入力で修正（記録し忘れ対策）
+  function editTime(id) {
+    const it = state.items.find((x) => x.id === id);
+    if (!it) return;
+    const input = prompt(
+      "作業時間を分で入力してください（例: 90）。\n「分:秒」形式（例: 90:30）も使えます。",
+      toMinutes(elapsed(it))
+    );
+    if (input === null) return;
+    const str = input.trim();
+    let sec;
+    if (str.includes(":")) {
+      const parts = str.split(":");
+      const mm = parseInt(parts[0], 10);
+      const ss = parseInt(parts[1], 10);
+      if (isNaN(mm) || isNaN(ss) || mm < 0 || ss < 0 || ss >= 60) {
+        alert("正しい形式で入力してください（例: 90 または 90:30）。");
+        return;
+      }
+      sec = mm * 60 + ss;
+    } else {
+      const mins = parseFloat(str);
+      if (isNaN(mins) || mins < 0) { alert("0以上の数を入力してください。"); return; }
+      sec = Math.round(mins * 60);
+    }
+    it.seconds = sec;
+    if (it.runningSince) it.runningSince = Date.now(); // 計測中なら新しい値から継続
+    save();
+    render();
+  }
+
   function resetItem(id) {
     const it = state.items.find((x) => x.id === id);
     if (!it) return;
@@ -474,6 +509,8 @@
       const time = document.createElement("span");
       time.className = "item-time";
       time.textContent = formatTime(elapsed(it));
+      time.title = "クリックで時間を修正";
+      time.addEventListener("click", () => editTime(it.id));
 
       const ratio = document.createElement("span");
       ratio.className = "item-ratio";
