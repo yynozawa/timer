@@ -253,7 +253,7 @@
     </div>
 
     <div class="footer">
-      <button id="detachBtn">⧉ 最前面に切り離す</button>
+      <button id="detachBtn">⧉ 別ウィンドウで切り離す</button>
       <button id="copyBtn">合計をコピー</button>
     </div>
   </div>
@@ -396,35 +396,30 @@
     });
   }
 
-  // ---- 切り離し（常に最前面の小窓 / Document Picture-in-Picture）----
-  let pipWindow = null;
+  // ---- 切り離し（通常の別ウィンドウ。最前面固定ではない）----
+  let detachedWindow = null;
 
-  async function detach() {
-    if (!("documentPictureInPicture" in window)) {
-      alert("「切り離し」はこのブラウザでは使えません。\nMicrosoft Edge または Google Chrome（最新版）でこのファイルを開いてください。");
+  function detach() {
+    if (detachedWindow && !detachedWindow.closed) { detachedWindow.focus(); return; }
+    const win = window.open("", "worktimer", "popup=yes,width=360,height=460");
+    if (!win) {
+      alert("ポップアップがブロックされました。\nこのサイトのポップアップを許可してから、もう一度お試しください。");
       return;
     }
-    if (pipWindow) { pipWindow.focus(); return; }
-    try {
-      pipWindow = await documentPictureInPicture.requestWindow({ width: 360, height: 420 });
-    } catch (e) {
-      alert("切り離しに失敗しました: " + e.message);
-      pipWindow = null;
-      return;
-    }
-    // スタイルを小窓へコピー
+    detachedWindow = win;
+    win.document.title = "作業タイマー";
+    // スタイルを別ウィンドウへコピー
     document.querySelectorAll('style, link[rel="stylesheet"]').forEach((node) => {
-      pipWindow.document.head.appendChild(node.cloneNode(true));
+      win.document.head.appendChild(node.cloneNode(true));
     });
-    pipWindow.document.body.classList.add("pip");
-    pipWindow.document.title = "作業タイマー";
-    // アプリ本体を小窓へ移動（イベントや状態はそのまま維持される）
+    win.document.body.classList.add("pip");
+    // アプリ本体を別ウィンドウへ移動（イベントや状態はそのまま維持される）
     const app = document.querySelector(".app");
-    pipWindow.document.body.append(app);
-    // 小窓を閉じたら元のページへ戻す
-    pipWindow.addEventListener("pagehide", () => {
+    win.document.body.append(app);
+    // 別ウィンドウを閉じたら元のページへ戻す
+    win.addEventListener("pagehide", () => {
       document.body.append(app);
-      pipWindow = null;
+      detachedWindow = null;
     });
   }
 
