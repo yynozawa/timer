@@ -420,10 +420,11 @@
   }
 
   function copySummary() {
+    const ratio = (sec) => (toMinutes(sec) / state.target).toFixed(2);
     const lines = state.items
-      .map((it) => `${it.name}: ${toMinutes(elapsed(it))}分`);
+      .map((it) => `${it.name}: ${toMinutes(elapsed(it))}分 (${ratio(elapsed(it))})`);
     const total = state.items.reduce((a, it) => a + elapsed(it), 0);
-    lines.push(`合計: ${toMinutes(total)}分`);
+    lines.push(`合計: ${toMinutes(total)}分 (${ratio(total)})`);
     const text = lines.join("\n");
     navigator.clipboard.writeText(text).then(() => {
       copyBtn.textContent = "コピーしました！";
