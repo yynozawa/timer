@@ -451,6 +451,10 @@
     // アプリ本体を別ウィンドウへ移動（イベントや状態はそのまま維持される）
     const app = document.querySelector(".app");
     win.document.body.append(app);
+    // 別ウィンドウに戻ってきた瞬間に即再同期（固まって見えるのを防ぐ）
+    win.addEventListener("focus", tick);
+    win.addEventListener("pageshow", tick);
+    win.document.addEventListener("visibilitychange", tick);
     // 別ウィンドウを閉じたら元のページへ戻す
     win.addEventListener("pagehide", () => {
       document.body.append(app);
@@ -568,14 +572,34 @@
   targetEl.addEventListener("click", editTarget);
 
   // 日付跨ぎ＆実行中タイマーの更新
-  setInterval(() => {
+  function tick() {
     if (state.date !== todayKey()) {
       state = load();
       render();
       return;
     }
     updateTotals();
-  }, 1000);
+  }
+
+  // Web Worker でタイマーを駆動する。
+  // 通常の setInterval は裏に回ったタブで大きく間引かれるが、
+  // Worker のタイマーは止まりにくいため固まりにくくなる。
+  // 生成に失敗した場合（file:// など）は通常の setInterval にフォールバック。
+  (function startTicker() {
+    try {
+      const src = "setInterval(function(){postMessage(0);},1000);";
+      const blob = new Blob([src], { type: "application/javascript" });
+      const worker = new Worker(URL.createObjectURL(blob));
+      worker.onmessage = tick;
+    } catch (e) {
+      setInterval(tick, 1000);
+    }
+  })();
+
+  // 画面に戻った/フォーカスされた瞬間に即座に再同期し、固まって見えるのを防ぐ
+  document.addEventListener("visibilitychange", tick);
+  window.addEventListener("focus", tick);
+  window.addEventListener("pageshow", tick);
 
   // タブを閉じる前に保存（実行中の経過も確定）
   window.addEventListener("beforeunload", save);
