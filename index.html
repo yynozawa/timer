@@ -214,6 +214,47 @@
     padding: 20px 0;
   }
 
+  /* ---- 前日の記録 ---- */
+  .yday-toggle {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 12px;
+    text-align: left;
+    padding: 12px 6px 4px;
+    cursor: pointer;
+  }
+  .yday-toggle:hover { color: var(--text); }
+  .yday-card { margin-top: 8px; padding: 14px 16px; }
+  .yday-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 2px;
+    font-size: 13px;
+    color: var(--text-dim);
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .yday-row:last-of-type { border-bottom: none; }
+  .yday-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .yday-time { font-variant-numeric: tabular-nums; }
+  .yday-ratio { font-variant-numeric: tabular-nums; color: var(--accent); width: 34px; text-align: right; }
+  .yday-total { color: var(--text); font-weight: 600; }
+  .yday-copy {
+    width: 100%;
+    margin-top: 12px;
+    background: var(--card-inner);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 13px;
+    padding: 7px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .yday-copy:hover { border-color: var(--accent); color: var(--accent); }
+
   /* ---- 切り離し（PiP）窓の中での見た目 ---- */
   body.pip {
     display: block;
@@ -256,6 +297,8 @@
       </div>
     </div>
 
+    <div id="ydayWrap"></div>
+
     <div class="footer">
       <button id="detachBtn">⧉ 別ウィンドウで切り離す</button>
       <button id="copyBtn">合計をコピー</button>
@@ -278,6 +321,13 @@
     return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
   }
 
+  // 日付キー "2026-6-30" → "6月30日(火)"
+  function formatDateLabel(key) {
+    const p = key.split("-").map(Number);
+    const d = new Date(p[0], p[1] - 1, p[2]);
+    return `${p[1]}月${p[2]}日(${WEEKDAYS[d.getDay()]})`;
+  }
+
   function defaultState() {
     return {
       date: todayKey(),
@@ -297,8 +347,17 @@
       const s = JSON.parse(raw);
       if (!s.items) return defaultState();
       if (!s.target || s.target <= 0) s.target = 480;
-      // 日付が変わっていたら時間だけリセット（項目名は維持）
+      // 日付が変わっていたら、その日の記録を前日分として1日だけ保持し、時間をリセット（項目名は維持）
       if (s.date !== todayKey()) {
+        s.prev = {
+          label: formatDateLabel(s.date),
+          target: s.target,
+          items: s.items.map((it) => ({
+            name: it.name,
+            // 計測中のまま日付を跨いだ場合も確定させる
+            seconds: it.runningSince ? it.seconds + (Date.now() - it.runningSince) / 1000 : it.seconds,
+          })),
+        };
         s.date = todayKey();
         s.items.forEach((it) => { it.seconds = 0; it.runningSince = null; });
       }
@@ -469,6 +528,8 @@
   const dateEl = document.getElementById("date");
   const ratioEl = document.getElementById("ratio");
   const targetEl = document.getElementById("target");
+  const ydayWrap = document.getElementById("ydayWrap");
+  let ydayOpen = false;
 
   function editTarget() {
     const input = prompt("1日の目標分数を入力してください（例: 480）", state.target);
@@ -543,6 +604,62 @@
     });
 
     updateTotals();
+    renderYesterday();
+  }
+
+  // ---- 前日の記録（1日分だけ保持）----
+  function prevRatio(sec, target) {
+    return (toMinutes(sec) / (target || 480)).toFixed(2);
+  }
+
+  function renderYesterday() {
+    ydayWrap.innerHTML = "";
+    const p = state.prev;
+    if (!p || !p.items || p.items.length === 0) return;
+
+    const totalSec = p.items.reduce((a, it) => a + it.seconds, 0);
+
+    const toggle = document.createElement("button");
+    toggle.className = "yday-toggle";
+    toggle.textContent = `${ydayOpen ? "▾" : "▸"} 前日の記録 ${p.label} ・ 合計 ${toMinutes(totalSec)}分`;
+    toggle.addEventListener("click", () => { ydayOpen = !ydayOpen; renderYesterday(); });
+    ydayWrap.appendChild(toggle);
+    if (!ydayOpen) return;
+
+    const box = document.createElement("div");
+    box.className = "card yday-card";
+
+    const addRow = (name, sec, isTotal) => {
+      const row = document.createElement("div");
+      row.className = "yday-row" + (isTotal ? " yday-total" : "");
+      const n = document.createElement("span"); n.className = "yday-name"; n.textContent = name;
+      const t = document.createElement("span"); t.className = "yday-time"; t.textContent = `${toMinutes(sec)}分`;
+      const r = document.createElement("span"); r.className = "yday-ratio"; r.textContent = prevRatio(sec, p.target);
+      row.append(n, t, r);
+      box.appendChild(row);
+    };
+    p.items.forEach((it) => addRow(it.name, it.seconds, false));
+    addRow("合計", totalSec, true);
+
+    const copy = document.createElement("button");
+    copy.className = "yday-copy";
+    copy.textContent = "前日分をコピー";
+    copy.addEventListener("click", () => copyPrev(copy));
+    box.appendChild(copy);
+
+    ydayWrap.appendChild(box);
+  }
+
+  function copyPrev(btn) {
+    const p = state.prev;
+    if (!p) return;
+    const lines = p.items.map((it) => `${it.name}: ${toMinutes(it.seconds)}分 (${prevRatio(it.seconds, p.target)})`);
+    const total = p.items.reduce((a, it) => a + it.seconds, 0);
+    lines.push(`合計: ${toMinutes(total)}分 (${prevRatio(total, p.target)})`);
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      btn.textContent = "コピーしました！";
+      setTimeout(() => { btn.textContent = "前日分をコピー"; }, 1800);
+    });
   }
 
   // 合計と実行中の表示だけ毎秒更新（入力欄の再生成は避ける）
